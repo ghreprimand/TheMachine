@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# Backup files
+*~
+*.bak
+
+# The binary is tracked intentionally — it IS the project
+# Do NOT add machine-dump to gitignore

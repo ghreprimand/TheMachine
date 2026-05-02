@@ -1,0 +1,6 @@
+# The hex file is the source code: annotated x86_64 machine-code bytes.
+# Mark it as detectable so GitHub shows the repository as Hex.
+machine-dump.hex linguist-language=Hex
+machine-dump.hex linguist-detectable=true
+machine-dump binary
+build.sh linguist-detectable=false

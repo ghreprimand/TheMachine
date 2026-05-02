@@ -1,0 +1,872 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# machine-dump.hex — x86_64 machine code, byte by byte
+#
+# Build:
+#   sed 's/#.*//' machine-dump.hex | tr -d ' \n\r' | xxd -r -p > machine-dump
+#   chmod +x machine-dump
+#
+# rbp = BSS base (survives syscalls). syscall clobbers rax, rcx, r11.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── ELF HEADER (64 bytes) ───────────────────────────────────────────────────
+7f 45 4c 46 02 01 01 00          # ELF magic, 64-bit, LE, v1, SysV
+00 00 00 00 00 00 00 00          # padding
+02 00 3e 00 01 00 00 00          # ET_EXEC, x86_64, version 1
+78 00 40 00 00 00 00 00          # entry: 0x400078
+40 00 00 00 00 00 00 00          # phdr at 64
+00 00 00 00 00 00 00 00          # no section headers
+00 00 00 00 40 00 38 00          # flags, ehsize=64, phentsize=56
+01 00 00 00 00 00 00 00          # 1 phdr, no shdr
+
+# ─── PROGRAM HEADER (56 bytes) ───────────────────────────────────────────────
+01 00 00 00 07 00 00 00          # PT_LOAD, RWX
+00 00 00 00 00 00 00 00          # offset: 0
+00 00 40 00 00 00 00 00          # vaddr: 0x400000
+00 00 40 00 00 00 00 00          # paddr: 0x400000
+f5 0e 00 00 00 00 00 00          # filesz: 3829
+3d 11 02 00 00 00 00 00          # memsz: 135485 (131656 BSS = 128KB output buffer)
+00 00 20 00 00 00 00 00          # align: 0x200000
+
+# ─── _start — entry: parse argc/argv, open file, init terminal ───────────────
+58                               # 0078: pop    rax
+48 83 f8 02                      # 0079: cmp    0x2,rax
+0f 8c b2 0a 00 00                # 007d: jl     0xb35
+5f                               # 0083: pop    rdi
+5f                               # 0084: pop    rdi
+57                               # 0085: push   rdi
+48 bd f5 0e 40 00 00 00 00 00    # 0086: movabs 0x400ef5,rbp
+5f                               # 0090: pop    rdi
+48 89 bd 30 02 02 00             # 0091: mov    rdi,0x20230(rbp)
+48 89 f8                         # 0098: mov    rdi,rax
+
+# ─── strlen_loop — count filename length ─────────────────────────────────────
+80 38 00                         # 009b: cmpb   0x0,(rax)
+0f 84 08 00 00 00                # 009e: je     0xac
+48 ff c0                         # 00a4: inc    rax
+e9 ef ff ff ff                   # 00a7: jmp    0x9b
+
+# ─── strlen_done — store length ──────────────────────────────────────────────
+48 29 f8                         # 00ac: sub    rdi,rax
+48 89 85 38 02 02 00             # 00af: mov    rax,0x20238(rbp)
+48 8b bd 30 02 02 00             # 00b6: mov    0x20230(rbp),rdi
+48 31 f6                         # 00bd: xor    rsi,rsi
+48 31 d2                         # 00c0: xor    rdx,rdx
+b8 02 00 00 00                   # 00c3: mov    0x2,eax
+0f 05                            # 00c8: syscall
+48 85 c0                         # 00ca: test   rax,rax
+0f 8c 7f 0a 00 00                # 00cd: jl     0xb52
+48 89 85 d0 00 02 00             # 00d3: mov    rax,0x200d0(rbp)
+48 89 c7                         # 00da: mov    rax,rdi
+48 8d b5 08 01 02 00             # 00dd: lea    0x20108(rbp),rsi
+b8 05 00 00 00                   # 00e4: mov    0x5,eax
+0f 05                            # 00e9: syscall
+48 8b 85 38 01 02 00             # 00eb: mov    0x20138(rbp),rax
+48 89 85 d8 00 02 00             # 00f2: mov    rax,0x200d8(rbp)
+48 85 c0                         # 00f9: test   rax,rax
+0f 8e 6d 0a 00 00                # 00fc: jle    0xb6f
+48 31 ff                         # 0102: xor    rdi,rdi
+48 89 c6                         # 0105: mov    rax,rsi
+ba 01 00 00 00                   # 0108: mov    0x1,edx
+49 c7 c2 02 00 00 00             # 010d: mov    0x2,r10
+48 8b 85 d0 00 02 00             # 0114: mov    0x200d0(rbp),rax
+49 89 c0                         # 011b: mov    rax,r8
+4d 31 c9                         # 011e: xor    r9,r9
+b8 09 00 00 00                   # 0121: mov    0x9,eax
+0f 05                            # 0126: syscall
+48 3d 00 f0 ff ff                # 0128: cmp    0xfffffffffffff000,rax
+0f 87 58 0a 00 00                # 012e: ja     0xb8c
+48 89 85 e0 00 02 00             # 0134: mov    rax,0x200e0(rbp)
+48 c7 85 40 02 02 00 01 00 00 00 # 013b: movq   0x1,0x20240(rbp)
+48 31 ff                         # 0146: xor    rdi,rdi
+be 01 54 00 00                   # 0149: mov    0x5401,esi
+48 8d 95 00 00 00 00             # 014e: lea    0x0(rbp),rdx
+b8 10 00 00 00                   # 0155: mov    0x10,eax
+0f 05                            # 015a: syscall
+48 8d b5 00 00 00 00             # 015c: lea    0x0(rbp),rsi
+48 8d bd 3c 00 00 00             # 0163: lea    0x3c(rbp),rdi
+b9 3c 00 00 00                   # 016a: mov    0x3c,ecx
+f3 a4                            # 016f: rep movsb (rsi),(rdi)
+48 8b 85 48 00 00 00             # 0171: mov    0x48(rbp),rax
+48 83 e0 f5                      # 0178: and    0xfffffffffffffff5,rax
+48 89 85 48 00 00 00             # 017c: mov    rax,0x48(rbp)
+c6 85 53 00 00 00 01             # 0183: movb   0x1,0x53(rbp)
+c6 85 52 00 00 00 00             # 018a: movb   0x0,0x52(rbp)
+48 31 ff                         # 0191: xor    rdi,rdi
+be 02 54 00 00                   # 0194: mov    0x5402,esi
+48 8d 95 3c 00 00 00             # 0199: lea    0x3c(rbp),rdx
+b8 10 00 00 00                   # 01a0: mov    0x10,eax
+0f 05                            # 01a5: syscall
+48 b8 ed 0a 40 00 00 00 00 00    # 01a7: movabs 0x400aed,rax
+48 89 85 98 01 02 00             # 01b1: mov    rax,0x20198(rbp)
+b8 00 00 00 04                   # 01b8: mov    0x4000000,eax
+48 89 85 a0 01 02 00             # 01bd: mov    rax,0x201a0(rbp)
+48 b8 2e 0b 40 00 00 00 00 00    # 01c4: movabs 0x400b2e,rax
+48 89 85 a8 01 02 00             # 01ce: mov    rax,0x201a8(rbp)
+48 31 c0                         # 01d5: xor    rax,rax
+48 89 85 b0 01 02 00             # 01d8: mov    rax,0x201b0(rbp)
+bf 1c 00 00 00                   # 01df: mov    0x1c,edi
+48 8d b5 98 01 02 00             # 01e4: lea    0x20198(rbp),rsi
+48 31 d2                         # 01eb: xor    rdx,rdx
+49 c7 c2 08 00 00 00             # 01ee: mov    0x8,r10
+b8 0d 00 00 00                   # 01f5: mov    0xd,eax
+0f 05                            # 01fa: syscall
+e8 9e 01 00 00                   # 01fc: call   0x39f
+e8 97 03 00 00                   # 0201: call   0x59d
+
+# ─── main_loop — render -> read key -> dispatch ──────────────────────────────
+e8 29 04 00 00                   # 0206: call   0x634
+e8 e4 07 00 00                   # 020b: call   0x9f4
+3c 71                            # 0210: cmp    0x71,al
+0f 84 1e 01 00 00                # 0212: je     0x336
+3c 01                            # 0218: cmp    0x1,al
+0f 84 35 00 00 00                # 021a: je     0x255
+3c 02                            # 0220: cmp    0x2,al
+0f 84 50 00 00 00                # 0222: je     0x278
+3c 12                            # 0228: cmp    0x12,al
+0f 84 70 00 00 00                # 022a: je     0x2a0
+3c 13                            # 0230: cmp    0x13,al
+0f 84 99 00 00 00                # 0232: je     0x2d1
+3c 10                            # 0238: cmp    0x10,al
+0f 84 c7 00 00 00                # 023a: je     0x307
+3c 11                            # 0240: cmp    0x11,al
+0f 84 ce 00 00 00                # 0242: je     0x316
+3c 67                            # 0248: cmp    0x67,al
+0f 84 d7 00 00 00                # 024a: je     0x327
+e9 b1 ff ff ff                   # 0250: jmp    0x206
+
+# ─── do_up — scroll up one row ───────────────────────────────────────────────
+48 8b 85 e8 00 02 00             # 0255: mov    0x200e8(rbp),rax
+48 83 e8 10                      # 025c: sub    0x10,rax
+48 85 c0                         # 0260: test   rax,rax
+0f 8d 03 00 00 00                # 0263: jge    0x26c
+48 31 c0                         # 0269: xor    rax,rax
+48 89 85 e8 00 02 00             # 026c: mov    rax,0x200e8(rbp)
+e9 8e ff ff ff                   # 0273: jmp    0x206
+
+# ─── do_down — scroll down one row ───────────────────────────────────────────
+48 8b 85 e8 00 02 00             # 0278: mov    0x200e8(rbp),rax
+48 83 c0 10                      # 027f: add    0x10,rax
+e8 e5 00 00 00                   # 0283: call   0x36d
+48 39 c8                         # 0288: cmp    rcx,rax
+0f 8e 03 00 00 00                # 028b: jle    0x294
+48 89 c8                         # 0291: mov    rcx,rax
+48 89 85 e8 00 02 00             # 0294: mov    rax,0x200e8(rbp)
+e9 66 ff ff ff                   # 029b: jmp    0x206
+
+# ─── do_pgup — scroll up one page ────────────────────────────────────────────
+48 8b 85 e8 00 02 00             # 02a0: mov    0x200e8(rbp),rax
+48 8b 8d f0 00 02 00             # 02a7: mov    0x200f0(rbp),rcx
+48 83 e9 06                      # 02ae: sub    0x6,rcx
+48 c1 e1 04                      # 02b2: shl    0x4,rcx
+48 29 c8                         # 02b6: sub    rcx,rax
+48 85 c0                         # 02b9: test   rax,rax
+0f 8d 03 00 00 00                # 02bc: jge    0x2c5
+48 31 c0                         # 02c2: xor    rax,rax
+48 89 85 e8 00 02 00             # 02c5: mov    rax,0x200e8(rbp)
+e9 35 ff ff ff                   # 02cc: jmp    0x206
+
+# ─── do_pgdn — scroll down one page ──────────────────────────────────────────
+48 8b 85 e8 00 02 00             # 02d1: mov    0x200e8(rbp),rax
+48 8b 8d f0 00 02 00             # 02d8: mov    0x200f0(rbp),rcx
+48 83 e9 06                      # 02df: sub    0x6,rcx
+48 c1 e1 04                      # 02e3: shl    0x4,rcx
+48 01 c8                         # 02e7: add    rcx,rax
+e8 7e 00 00 00                   # 02ea: call   0x36d
+48 39 c8                         # 02ef: cmp    rcx,rax
+0f 8e 03 00 00 00                # 02f2: jle    0x2fb
+48 89 c8                         # 02f8: mov    rcx,rax
+48 89 85 e8 00 02 00             # 02fb: mov    rax,0x200e8(rbp)
+e9 ff fe ff ff                   # 0302: jmp    0x206
+
+# ─── do_home — scroll to start ───────────────────────────────────────────────
+48 31 c0                         # 0307: xor    rax,rax
+48 89 85 e8 00 02 00             # 030a: mov    rax,0x200e8(rbp)
+e9 f0 fe ff ff                   # 0311: jmp    0x206
+
+# ─── do_end — scroll to end ──────────────────────────────────────────────────
+e8 52 00 00 00                   # 0316: call   0x36d
+48 89 8d e8 00 02 00             # 031b: mov    rcx,0x200e8(rbp)
+e9 df fe ff ff                   # 0322: jmp    0x206
+
+# ─── do_goto — goto offset (stub) ────────────────────────────────────────────
+48 31 c0                         # 0327: xor    rax,rax
+48 89 85 e8 00 02 00             # 032a: mov    rax,0x200e8(rbp)
+e9 d0 fe ff ff                   # 0331: jmp    0x206
+
+# ─── do_quit — restore term, cleanup, exit(0) ────────────────────────────────
+e8 78 02 00 00                   # 0336: call   0x5b3
+e8 b6 00 00 00                   # 033b: call   0x3f6
+48 8b bd e0 00 02 00             # 0340: mov    0x200e0(rbp),rdi
+48 8b b5 d8 00 02 00             # 0347: mov    0x200d8(rbp),rsi
+b8 0b 00 00 00                   # 034e: mov    0xb,eax
+0f 05                            # 0353: syscall
+48 8b bd d0 00 02 00             # 0355: mov    0x200d0(rbp),rdi
+b8 03 00 00 00                   # 035c: mov    0x3,eax
+0f 05                            # 0361: syscall
+48 31 ff                         # 0363: xor    rdi,rdi
+b8 3c 00 00 00                   # 0366: mov    0x3c,eax
+0f 05                            # 036b: syscall
+
+# ─── calc_max — max scroll offset -> rcx ─────────────────────────────────────
+48 8b 8d d8 00 02 00             # 036d: mov    0x200d8(rbp),rcx
+48 83 e9 01                      # 0374: sub    0x1,rcx
+48 c1 e9 04                      # 0378: shr    0x4,rcx
+48 8b 95 f0 00 02 00             # 037c: mov    0x200f0(rbp),rdx
+48 83 ea 06                      # 0383: sub    0x6,rdx
+48 29 d1                         # 0387: sub    rdx,rcx
+48 83 c1 01                      # 038a: add    0x1,rcx
+48 85 c9                         # 038e: test   rcx,rcx
+0f 8d 03 00 00 00                # 0391: jge    0x39a
+48 31 c9                         # 0397: xor    rcx,rcx
+48 c1 e1 04                      # 039a: shl    0x4,rcx
+c3                               # 039e: ret
+
+# ─── get_term_size — ioctl TIOCGWINSZ, fallback 80x24 ────────────────────────
+48 31 ff                         # 039f: xor    rdi,rdi
+be 13 54 00 00                   # 03a2: mov    0x5413,esi
+48 8d 95 c8 00 02 00             # 03a7: lea    0x200c8(rbp),rdx
+b8 10 00 00 00                   # 03ae: mov    0x10,eax
+0f 05                            # 03b3: syscall
+48 85 c0                         # 03b5: test   rax,rax
+0f 8c 1f 00 00 00                # 03b8: jl     0x3dd
+48 0f b7 85 c8 00 02 00          # 03be: movzwq 0x200c8(rbp),rax
+48 89 85 f0 00 02 00             # 03c6: mov    rax,0x200f0(rbp)
+48 0f b7 85 ca 00 02 00          # 03cd: movzwq 0x200ca(rbp),rax
+48 89 85 f8 00 02 00             # 03d5: mov    rax,0x200f8(rbp)
+c3                               # 03dc: ret
+b8 18 00 00 00                   # 03dd: mov    0x18,eax
+48 89 85 f0 00 02 00             # 03e2: mov    rax,0x200f0(rbp)
+b8 50 00 00 00                   # 03e9: mov    0x50,eax
+48 89 85 f8 00 02 00             # 03ee: mov    rax,0x200f8(rbp)
+c3                               # 03f5: ret
+
+# ─── restore_term — ioctl TCSETS original termios ────────────────────────────
+48 31 ff                         # 03f6: xor    rdi,rdi
+be 02 54 00 00                   # 03f9: mov    0x5402,esi
+48 8d 95 00 00 00 00             # 03fe: lea    0x0(rbp),rdx
+b8 10 00 00 00                   # 0405: mov    0x10,eax
+0f 05                            # 040a: syscall
+c3                               # 040c: ret
+
+# ─── write_stdout — write(1, rsi, rdx) ───────────────────────────────────────
+bf 01 00 00 00                   # 040d: mov    0x1,edi
+b8 01 00 00 00                   # 0412: mov    0x1,eax
+0f 05                            # 0417: syscall
+c3                               # 0419: ret
+
+# ─── write_stderr — write(2, rsi, rdx) ───────────────────────────────────────
+bf 02 00 00 00                   # 041a: mov    0x2,edi
+b8 01 00 00 00                   # 041f: mov    0x1,eax
+0f 05                            # 0424: syscall
+c3                               # 0426: ret
+
+# ─── ob_reset — output buffer pos = 0 ────────────────────────────────────────
+48 31 c0                         # 0427: xor    rax,rax
+48 89 85 78 00 02 00             # 042a: mov    rax,0x20078(rbp)
+c3                               # 0431: ret
+
+# ─── ob_byte — append al to outbuf ───────────────────────────────────────────
+51                               # 0432: push   rcx
+57                               # 0433: push   rdi
+88 c1                            # 0434: mov    al,cl
+48 8b bd 78 00 02 00             # 0436: mov    0x20078(rbp),rdi
+50                               # 043d: push   rax
+48 8d 85 78 00 00 00             # 043e: lea    0x78(rbp),rax
+48 01 f8                         # 0445: add    rdi,rax
+88 08                            # 0448: mov    cl,(rax)
+48 ff c7                         # 044a: inc    rdi
+48 89 bd 78 00 02 00             # 044d: mov    rdi,0x20078(rbp)
+58                               # 0454: pop    rax
+5f                               # 0455: pop    rdi
+59                               # 0456: pop    rcx
+c3                               # 0457: ret
+
+# ─── ob_append — append rcx bytes from rsi ───────────────────────────────────
+50                               # 0458: push   rax
+56                               # 0459: push   rsi
+57                               # 045a: push   rdi
+51                               # 045b: push   rcx
+48 8b 85 78 00 02 00             # 045c: mov    0x20078(rbp),rax
+48 8d bd 78 00 00 00             # 0463: lea    0x78(rbp),rdi
+48 01 c7                         # 046a: add    rax,rdi
+f3 a4                            # 046d: rep movsb (rsi),(rdi)
+59                               # 046f: pop    rcx
+48 01 c8                         # 0470: add    rcx,rax
+48 89 85 78 00 02 00             # 0473: mov    rax,0x20078(rbp)
+5f                               # 047a: pop    rdi
+5e                               # 047b: pop    rsi
+58                               # 047c: pop    rax
+c3                               # 047d: ret
+
+# ─── ob_str — append null-terminated string ──────────────────────────────────
+50                               # 047e: push   rax
+51                               # 047f: push   rcx
+56                               # 0480: push   rsi
+48 89 f0                         # 0481: mov    rsi,rax
+80 3e 00                         # 0484: cmpb   0x0,(rsi)
+0f 84 08 00 00 00                # 0487: je     0x495
+48 ff c6                         # 048d: inc    rsi
+e9 ef ff ff ff                   # 0490: jmp    0x484
+48 89 f1                         # 0495: mov    rsi,rcx
+48 29 c1                         # 0498: sub    rax,rcx
+5e                               # 049b: pop    rsi
+e8 b7 ff ff ff                   # 049c: call   0x458
+59                               # 04a1: pop    rcx
+58                               # 04a2: pop    rax
+c3                               # 04a3: ret
+
+# ─── ob_flush — write outbuf to stdout ───────────────────────────────────────
+50                               # 04a4: push   rax
+57                               # 04a5: push   rdi
+56                               # 04a6: push   rsi
+52                               # 04a7: push   rdx
+48 8b 95 78 00 02 00             # 04a8: mov    0x20078(rbp),rdx
+48 85 d2                         # 04af: test   rdx,rdx
+0f 84 13 00 00 00                # 04b2: je     0x4cb
+48 8d b5 78 00 00 00             # 04b8: lea    0x78(rbp),rsi
+bf 01 00 00 00                   # 04bf: mov    0x1,edi
+b8 01 00 00 00                   # 04c4: mov    0x1,eax
+0f 05                            # 04c9: syscall
+5a                               # 04cb: pop    rdx
+5e                               # 04cc: pop    rsi
+5f                               # 04cd: pop    rdi
+58                               # 04ce: pop    rax
+c3                               # 04cf: ret
+
+# ─── ob_hex2 — al -> 2 hex chars ─────────────────────────────────────────────
+51                               # 04d0: push   rcx
+56                               # 04d1: push   rsi
+50                               # 04d2: push   rax
+48 8d 35 cf 06 00 00             # 04d3: lea    0x6cf(rip),rsi        # 0xba9
+48 0f b6 c8                      # 04da: movzbq al,rcx
+48 c1 e9 04                      # 04de: shr    0x4,rcx
+0f b6 04 0e                      # 04e2: movzbl (rsi,rcx,1),eax
+e8 47 ff ff ff                   # 04e6: call   0x432
+58                               # 04eb: pop    rax
+48 0f b6 c8                      # 04ec: movzbq al,rcx
+48 83 e1 0f                      # 04f0: and    0xf,rcx
+48 8d 35 ae 06 00 00             # 04f4: lea    0x6ae(rip),rsi        # 0xba9
+0f b6 04 0e                      # 04fb: movzbl (rsi,rcx,1),eax
+e8 2e ff ff ff                   # 04ff: call   0x432
+5e                               # 0504: pop    rsi
+59                               # 0505: pop    rcx
+c3                               # 0506: ret
+
+# ─── ob_hex8 — rax -> 8 hex chars ────────────────────────────────────────────
+50                               # 0507: push   rax
+51                               # 0508: push   rcx
+52                               # 0509: push   rdx
+b9 07 00 00 00                   # 050a: mov    0x7,ecx
+50                               # 050f: push   rax
+51                               # 0510: push   rcx
+48 89 c2                         # 0511: mov    rax,rdx
+c1 e1 02                         # 0514: shl    0x2,ecx
+48 d3 ea                         # 0517: shr    cl,rdx
+83 e2 0f                         # 051a: and    0xf,edx
+48 8d 35 85 06 00 00             # 051d: lea    0x685(rip),rsi        # 0xba9
+0f b6 04 16                      # 0524: movzbl (rsi,rdx,1),eax
+e8 05 ff ff ff                   # 0528: call   0x432
+59                               # 052d: pop    rcx
+58                               # 052e: pop    rax
+ff c9                            # 052f: dec    ecx
+83 f9 ff                         # 0531: cmp    0xffffffff,ecx
+0f 85 d5 ff ff ff                # 0534: jne    0x50f
+5a                               # 053a: pop    rdx
+59                               # 053b: pop    rcx
+58                               # 053c: pop    rax
+c3                               # 053d: ret
+
+# ─── ob_decimal — rax -> decimal string ──────────────────────────────────────
+50                               # 053e: push   rax
+51                               # 053f: push   rcx
+52                               # 0540: push   rdx
+56                               # 0541: push   rsi
+57                               # 0542: push   rdi
+48 31 c9                         # 0543: xor    rcx,rcx
+48 85 c0                         # 0546: test   rax,rax
+0f 85 0c 00 00 00                # 0549: jne    0x55b
+b0 30                            # 054f: mov    0x30,al
+e8 dc fe ff ff                   # 0551: call   0x432
+e9 3c 00 00 00                   # 0556: jmp    0x597
+48 85 c0                         # 055b: test   rax,rax
+0f 84 1c 00 00 00                # 055e: je     0x580
+48 31 d2                         # 0564: xor    rdx,rdx
+48 bf 0a 00 00 00 00 00 00 00    # 0567: movabs 0xa,rdi
+48 f7 f7                         # 0571: div    rdi
+83 c2 30                         # 0574: add    0x30,edx
+52                               # 0577: push   rdx
+48 ff c1                         # 0578: inc    rcx
+e9 db ff ff ff                   # 057b: jmp    0x55b
+48 85 c9                         # 0580: test   rcx,rcx
+0f 84 0e 00 00 00                # 0583: je     0x597
+58                               # 0589: pop    rax
+e8 a3 fe ff ff                   # 058a: call   0x432
+48 ff c9                         # 058f: dec    rcx
+e9 e9 ff ff ff                   # 0592: jmp    0x580
+5f                               # 0597: pop    rdi
+5e                               # 0598: pop    rsi
+5a                               # 0599: pop    rdx
+59                               # 059a: pop    rcx
+58                               # 059b: pop    rax
+c3                               # 059c: ret
+
+# ─── alt_screen_on — alternate screen + hide cursor ──────────────────────────
+56                               # 059d: push   rsi
+52                               # 059e: push   rdx
+48 8d 35 13 06 00 00             # 059f: lea    0x613(rip),rsi        # 0xbb9
+ba 14 00 00 00                   # 05a6: mov    0x14,edx
+e8 5d fe ff ff                   # 05ab: call   0x40d
+5a                               # 05b0: pop    rdx
+5e                               # 05b1: pop    rsi
+c3                               # 05b2: ret
+
+# ─── alt_screen_off — restore screen + show cursor ───────────────────────────
+56                               # 05b3: push   rsi
+52                               # 05b4: push   rdx
+48 8d 35 13 06 00 00             # 05b5: lea    0x613(rip),rsi        # 0xbcf
+ba 14 00 00 00                   # 05bc: mov    0x14,edx
+e8 47 fe ff ff                   # 05c1: call   0x40d
+5a                               # 05c6: pop    rdx
+5e                               # 05c7: pop    rsi
+c3                               # 05c8: ret
+
+# ─── set_byte_color — ANSI color for byte class ──────────────────────────────
+50                               # 05c9: push   rax
+56                               # 05ca: push   rsi
+51                               # 05cb: push   rcx
+3c 00                            # 05cc: cmp    0x0,al
+0f 84 29 00 00 00                # 05ce: je     0x5fd
+3c 20                            # 05d4: cmp    0x20,al
+0f 82 32 00 00 00                # 05d6: jb     0x60e
+3c 7e                            # 05dc: cmp    0x7e,al
+0f 8e 3b 00 00 00                # 05de: jle    0x61f
+3c 7f                            # 05e4: cmp    0x7f,al
+0f 84 22 00 00 00                # 05e6: je     0x60e
+48 8d 35 3b 06 00 00             # 05ec: lea    0x63b(rip),rsi        # 0xc2e
+b9 0b 00 00 00                   # 05f3: mov    0xb,ecx
+e9 2e 00 00 00                   # 05f8: jmp    0x62b
+48 8d 35 15 06 00 00             # 05fd: lea    0x615(rip),rsi        # 0xc19
+b9 0b 00 00 00                   # 0604: mov    0xb,ecx
+e9 1d 00 00 00                   # 0609: jmp    0x62b
+48 8d 35 0f 06 00 00             # 060e: lea    0x60f(rip),rsi        # 0xc24
+b9 0a 00 00 00                   # 0615: mov    0xa,ecx
+e9 0c 00 00 00                   # 061a: jmp    0x62b
+48 8d 35 e8 05 00 00             # 061f: lea    0x5e8(rip),rsi        # 0xc0e
+b9 0b 00 00 00                   # 0626: mov    0xb,ecx
+e8 28 fe ff ff                   # 062b: call   0x458
+59                               # 0630: pop    rcx
+5e                               # 0631: pop    rsi
+58                               # 0632: pop    rax
+c3                               # 0633: ret
+
+# ─── render_screen — draw full TUI frame ─────────────────────────────────────
+53                               # 0634: push   rbx
+41 54                            # 0635: push   r12
+41 55                            # 0637: push   r13
+41 56                            # 0639: push   r14
+41 57                            # 063b: push   r15
+e8 e5 fd ff ff                   # 063d: call   0x427
+b0 1b                            # 0642: mov    0x1b,al
+e8 e9 fd ff ff                   # 0644: call   0x432
+b0 5b                            # 0649: mov    0x5b,al
+e8 e2 fd ff ff                   # 064b: call   0x432
+b0 48                            # 0650: mov    0x48,al
+e8 db fd ff ff                   # 0652: call   0x432
+48 8d 35 86 05 00 00             # 0657: lea    0x586(rip),rsi        # 0xbe4
+b9 06 00 00 00                   # 065e: mov    0x6,ecx
+e8 f0 fd ff ff                   # 0663: call   0x458
+48 8d 35 7e 05 00 00             # 0668: lea    0x57e(rip),rsi        # 0xbed
+b9 0b 00 00 00                   # 066f: mov    0xb,ecx
+e8 df fd ff ff                   # 0674: call   0x458
+48 8d 35 b9 05 00 00             # 0679: lea    0x5b9(rip),rsi        # 0xc39
+e8 f9 fd ff ff                   # 0680: call   0x47e
+48 8d 35 6c 05 00 00             # 0685: lea    0x56c(rip),rsi        # 0xbf8
+b9 07 00 00 00                   # 068c: mov    0x7,ecx
+e8 c2 fd ff ff                   # 0691: call   0x458
+48 8d 35 aa 05 00 00             # 0696: lea    0x5aa(rip),rsi        # 0xc47
+e8 dc fd ff ff                   # 069d: call   0x47e
+48 8d 35 44 05 00 00             # 06a2: lea    0x544(rip),rsi        # 0xbed
+b9 0b 00 00 00                   # 06a9: mov    0xb,ecx
+e8 a5 fd ff ff                   # 06ae: call   0x458
+48 8d 35 9a 05 00 00             # 06b3: lea    0x59a(rip),rsi        # 0xc54
+e8 bf fd ff ff                   # 06ba: call   0x47e
+48 8d 35 32 05 00 00             # 06bf: lea    0x532(rip),rsi        # 0xbf8
+b9 07 00 00 00                   # 06c6: mov    0x7,ecx
+e8 88 fd ff ff                   # 06cb: call   0x458
+48 8b b5 30 02 02 00             # 06d0: mov    0x20230(rbp),rsi
+48 8b 8d 38 02 02 00             # 06d7: mov    0x20238(rbp),rcx
+e8 75 fd ff ff                   # 06de: call   0x458
+48 8d 35 03 05 00 00             # 06e3: lea    0x503(rip),rsi        # 0xbed
+b9 0b 00 00 00                   # 06ea: mov    0xb,ecx
+e8 64 fd ff ff                   # 06ef: call   0x458
+48 8d 35 65 05 00 00             # 06f4: lea    0x565(rip),rsi        # 0xc60
+e8 7e fd ff ff                   # 06fb: call   0x47e
+48 8b 85 d8 00 02 00             # 0700: mov    0x200d8(rbp),rax
+e8 32 fe ff ff                   # 0707: call   0x53e
+48 8d 35 56 05 00 00             # 070c: lea    0x556(rip),rsi        # 0xc69
+e8 66 fd ff ff                   # 0713: call   0x47e
+48 8d 35 52 05 00 00             # 0718: lea    0x552(rip),rsi        # 0xc71
+e8 5a fd ff ff                   # 071f: call   0x47e
+48 8d 35 d4 04 00 00             # 0724: lea    0x4d4(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 072b: mov    0x4,ecx
+e8 23 fd ff ff                   # 0730: call   0x458
+b0 0d                            # 0735: mov    0xd,al
+e8 f6 fc ff ff                   # 0737: call   0x432
+b0 0a                            # 073c: mov    0xa,al
+e8 ef fc ff ff                   # 073e: call   0x432
+48 8d 35 95 05 00 00             # 0743: lea    0x595(rip),rsi        # 0xcdf
+e8 2f fd ff ff                   # 074a: call   0x47e
+b0 0d                            # 074f: mov    0xd,al
+e8 dc fc ff ff                   # 0751: call   0x432
+b0 0a                            # 0756: mov    0xa,al
+e8 d5 fc ff ff                   # 0758: call   0x432
+48 8d 35 cf 05 00 00             # 075d: lea    0x5cf(rip),rsi        # 0xd33
+e8 15 fd ff ff                   # 0764: call   0x47e
+b0 0d                            # 0769: mov    0xd,al
+e8 c2 fc ff ff                   # 076b: call   0x432
+b0 0a                            # 0770: mov    0xa,al
+e8 bb fc ff ff                   # 0772: call   0x432
+4c 8b a5 e8 00 02 00             # 0777: mov    0x200e8(rbp),r12
+4c 8b ad f0 00 02 00             # 077e: mov    0x200f0(rbp),r13
+49 83 ed 06                      # 0785: sub    0x6,r13
+4c 8b b5 d8 00 02 00             # 0789: mov    0x200d8(rbp),r14
+
+# ─── row_loop — per-row loop ─────────────────────────────────────────────────
+4d 85 ed                         # 0790: test   r13,r13
+0f 8e 0d 02 00 00                # 0793: jle    0x9a6
+4d 39 f4                         # 0799: cmp    r14,r12
+0f 83 cd 01 00 00                # 079c: jae    0x96f
+48 8d 35 d5 04 00 00             # 07a2: lea    0x4d5(rip),rsi        # 0xc7e
+e8 d0 fc ff ff                   # 07a9: call   0x47e
+48 8d 35 4e 04 00 00             # 07ae: lea    0x44e(rip),rsi        # 0xc03
+b9 0b 00 00 00                   # 07b5: mov    0xb,ecx
+e8 99 fc ff ff                   # 07ba: call   0x458
+4c 89 e0                         # 07bf: mov    r12,rax
+e8 40 fd ff ff                   # 07c2: call   0x507
+b0 20                            # 07c7: mov    0x20,al
+e8 64 fc ff ff                   # 07c9: call   0x432
+48 8d 35 2a 04 00 00             # 07ce: lea    0x42a(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 07d5: mov    0x4,ecx
+e8 79 fc ff ff                   # 07da: call   0x458
+4d 31 ff                         # 07df: xor    r15,r15
+
+# ─── hex_loop — per-column hex loop ──────────────────────────────────────────
+49 83 ff 10                      # 07e2: cmp    0x10,r15
+0f 83 74 00 00 00                # 07e6: jae    0x860
+49 83 ff 08                      # 07ec: cmp    0x8,r15
+0f 85 07 00 00 00                # 07f0: jne    0x7fd
+b0 20                            # 07f6: mov    0x20,al
+e8 35 fc ff ff                   # 07f8: call   0x432
+4c 89 e0                         # 07fd: mov    r12,rax
+4c 01 f8                         # 0800: add    r15,rax
+4c 39 f0                         # 0803: cmp    r14,rax
+0f 83 37 00 00 00                # 0806: jae    0x843
+48 8b 95 e0 00 02 00             # 080c: mov    0x200e0(rbp),rdx
+0f b6 04 02                      # 0813: movzbl (rdx,rax,1),eax
+50                               # 0817: push   rax
+e8 ac fd ff ff                   # 0818: call   0x5c9
+58                               # 081d: pop    rax
+e8 ad fc ff ff                   # 081e: call   0x4d0
+48 8d 35 d5 03 00 00             # 0823: lea    0x3d5(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 082a: mov    0x4,ecx
+e8 24 fc ff ff                   # 082f: call   0x458
+b0 20                            # 0834: mov    0x20,al
+e8 f7 fb ff ff                   # 0836: call   0x432
+49 ff c7                         # 083b: inc    r15
+e9 9f ff ff ff                   # 083e: jmp    0x7e2
+
+# ─── hex_blank — past EOF: spaces ────────────────────────────────────────────
+b0 20                            # 0843: mov    0x20,al
+e8 e8 fb ff ff                   # 0845: call   0x432
+b0 20                            # 084a: mov    0x20,al
+e8 e1 fb ff ff                   # 084c: call   0x432
+b0 20                            # 0851: mov    0x20,al
+e8 da fb ff ff                   # 0853: call   0x432
+49 ff c7                         # 0858: inc    r15
+e9 82 ff ff ff                   # 085b: jmp    0x7e2
+
+# ─── hex_done — columns finished ─────────────────────────────────────────────
+b0 20                            # 0860: mov    0x20,al
+e8 cb fb ff ff                   # 0862: call   0x432
+b0 20                            # 0867: mov    0x20,al
+e8 c4 fb ff ff                   # 0869: call   0x432
+4d 31 ff                         # 086e: xor    r15,r15
+
+# ─── ascii_loop — ASCII sidebar ──────────────────────────────────────────────
+49 83 ff 10                      # 0871: cmp    0x10,r15
+0f 83 9b 00 00 00                # 0875: jae    0x916
+4c 89 e0                         # 087b: mov    r12,rax
+4c 01 f8                         # 087e: add    r15,rax
+4c 39 f0                         # 0881: cmp    r14,rax
+0f 83 7d 00 00 00                # 0884: jae    0x907
+48 8b 95 e0 00 02 00             # 088a: mov    0x200e0(rbp),rdx
+0f b6 04 02                      # 0891: movzbl (rdx,rax,1),eax
+3c 20                            # 0895: cmp    0x20,al
+0f 82 39 00 00 00                # 0897: jb     0x8d6
+3c 7e                            # 089d: cmp    0x7e,al
+0f 87 31 00 00 00                # 089f: ja     0x8d6
+50                               # 08a5: push   rax
+48 8d 35 61 03 00 00             # 08a6: lea    0x361(rip),rsi        # 0xc0e
+b9 0b 00 00 00                   # 08ad: mov    0xb,ecx
+e8 a1 fb ff ff                   # 08b2: call   0x458
+58                               # 08b7: pop    rax
+e8 75 fb ff ff                   # 08b8: call   0x432
+48 8d 35 3b 03 00 00             # 08bd: lea    0x33b(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 08c4: mov    0x4,ecx
+e8 8a fb ff ff                   # 08c9: call   0x458
+49 ff c7                         # 08ce: inc    r15
+e9 9b ff ff ff                   # 08d1: jmp    0x871
+
+# ─── ascii_dot — non-printable: '.' ──────────────────────────────────────────
+48 8d 35 3c 03 00 00             # 08d6: lea    0x33c(rip),rsi        # 0xc19
+b9 0b 00 00 00                   # 08dd: mov    0xb,ecx
+e8 71 fb ff ff                   # 08e2: call   0x458
+b0 2e                            # 08e7: mov    0x2e,al
+e8 44 fb ff ff                   # 08e9: call   0x432
+48 8d 35 0a 03 00 00             # 08ee: lea    0x30a(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 08f5: mov    0x4,ecx
+e8 59 fb ff ff                   # 08fa: call   0x458
+49 ff c7                         # 08ff: inc    r15
+e9 6a ff ff ff                   # 0902: jmp    0x871
+
+# ─── ascii_space — past EOF: space ───────────────────────────────────────────
+b0 20                            # 0907: mov    0x20,al
+e8 24 fb ff ff                   # 0909: call   0x432
+49 ff c7                         # 090e: inc    r15
+e9 5b ff ff ff                   # 0911: jmp    0x871
+
+# ─── ascii_done — right border ───────────────────────────────────────────────
+48 8d 35 d0 02 00 00             # 0916: lea    0x2d0(rip),rsi        # 0xbed
+b9 0b 00 00 00                   # 091d: mov    0xb,ecx
+e8 31 fb ff ff                   # 0922: call   0x458
+48 8d 35 56 03 00 00             # 0927: lea    0x356(rip),rsi        # 0xc84
+e8 4b fb ff ff                   # 092e: call   0x47e
+48 8d 35 c5 02 00 00             # 0933: lea    0x2c5(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 093a: mov    0x4,ecx
+e8 14 fb ff ff                   # 093f: call   0x458
+48 8d 35 9f 02 00 00             # 0944: lea    0x29f(rip),rsi        # 0xbea
+b9 03 00 00 00                   # 094b: mov    0x3,ecx
+e8 03 fb ff ff                   # 0950: call   0x458
+b0 0d                            # 0955: mov    0xd,al
+e8 d6 fa ff ff                   # 0957: call   0x432
+b0 0a                            # 095c: mov    0xa,al
+e8 cf fa ff ff                   # 095e: call   0x432
+49 83 c4 10                      # 0963: add    0x10,r12
+49 ff cd                         # 0967: dec    r13
+e9 21 fe ff ff                   # 096a: jmp    0x790
+
+# ─── blank_row — empty filler row ────────────────────────────────────────────
+48 8d 35 14 03 00 00             # 096f: lea    0x314(rip),rsi        # 0xc8a
+e8 03 fb ff ff                   # 0976: call   0x47e
+48 8d 35 68 02 00 00             # 097b: lea    0x268(rip),rsi        # 0xbea
+b9 03 00 00 00                   # 0982: mov    0x3,ecx
+e8 cc fa ff ff                   # 0987: call   0x458
+b0 0d                            # 098c: mov    0xd,al
+e8 9f fa ff ff                   # 098e: call   0x432
+b0 0a                            # 0993: mov    0xa,al
+e8 98 fa ff ff                   # 0995: call   0x432
+49 83 c4 10                      # 099a: add    0x10,r12
+49 ff cd                         # 099e: dec    r13
+e9 ea fd ff ff                   # 09a1: jmp    0x790
+
+# ─── rows_done — footer + flush ──────────────────────────────────────────────
+48 8d 35 40 02 00 00             # 09a6: lea    0x240(rip),rsi        # 0xbed
+b9 0b 00 00 00                   # 09ad: mov    0xb,ecx
+e8 a1 fa ff ff                   # 09b2: call   0x458
+48 8d 35 57 04 00 00             # 09b7: lea    0x457(rip),rsi        # 0xe15
+e8 bb fa ff ff                   # 09be: call   0x47e
+48 8d 35 35 02 00 00             # 09c3: lea    0x235(rip),rsi        # 0xbff
+b9 04 00 00 00                   # 09ca: mov    0x4,ecx
+e8 84 fa ff ff                   # 09cf: call   0x458
+48 8d 35 0f 02 00 00             # 09d4: lea    0x20f(rip),rsi        # 0xbea
+b9 03 00 00 00                   # 09db: mov    0x3,ecx
+e8 73 fa ff ff                   # 09e0: call   0x458
+e8 ba fa ff ff                   # 09e5: call   0x4a4
+41 5f                            # 09ea: pop    r15
+41 5e                            # 09ec: pop    r14
+41 5d                            # 09ee: pop    r13
+41 5c                            # 09f0: pop    r12
+5b                               # 09f2: pop    rbx
+c3                               # 09f3: ret
+
+# ─── read_key — read stdin, parse ESC sequences ──────────────────────────────
+56                               # 09f4: push   rsi
+52                               # 09f5: push   rdx
+48 31 ff                         # 09f6: xor    rdi,rdi
+48 8d b5 80 00 02 00             # 09f9: lea    0x20080(rbp),rsi
+ba 01 00 00 00                   # 0a00: mov    0x1,edx
+b8 00 00 00 00                   # 0a05: mov    0x0,eax
+0f 05                            # 0a0a: syscall
+0f b6 85 80 00 02 00             # 0a0c: movzbl 0x20080(rbp),eax
+3c 1b                            # 0a13: cmp    0x1b,al
+0f 85 cf 00 00 00                # 0a15: jne    0xaea
+48 31 ff                         # 0a1b: xor    rdi,rdi
+48 8d b5 80 00 02 00             # 0a1e: lea    0x20080(rbp),rsi
+ba 01 00 00 00                   # 0a25: mov    0x1,edx
+b8 00 00 00 00                   # 0a2a: mov    0x0,eax
+0f 05                            # 0a2f: syscall
+0f b6 85 80 00 02 00             # 0a31: movzbl 0x20080(rbp),eax
+3c 5b                            # 0a38: cmp    0x5b,al
+0f 85 a8 00 00 00                # 0a3a: jne    0xae8
+48 31 ff                         # 0a40: xor    rdi,rdi
+48 8d b5 80 00 02 00             # 0a43: lea    0x20080(rbp),rsi
+ba 01 00 00 00                   # 0a4a: mov    0x1,edx
+b8 00 00 00 00                   # 0a4f: mov    0x0,eax
+0f 05                            # 0a54: syscall
+0f b6 85 80 00 02 00             # 0a56: movzbl 0x20080(rbp),eax
+3c 41                            # 0a5d: cmp    0x41,al
+0f 84 2d 00 00 00                # 0a5f: je     0xa92
+3c 42                            # 0a65: cmp    0x42,al
+0f 84 2c 00 00 00                # 0a67: je     0xa99
+3c 48                            # 0a6d: cmp    0x48,al
+0f 84 2b 00 00 00                # 0a6f: je     0xaa0
+3c 46                            # 0a75: cmp    0x46,al
+0f 84 2a 00 00 00                # 0a77: je     0xaa7
+3c 35                            # 0a7d: cmp    0x35,al
+0f 84 29 00 00 00                # 0a7f: je     0xaae
+3c 36                            # 0a85: cmp    0x36,al
+0f 84 3e 00 00 00                # 0a87: je     0xacb
+e9 56 00 00 00                   # 0a8d: jmp    0xae8
+b0 01                            # 0a92: mov    0x1,al
+e9 51 00 00 00                   # 0a94: jmp    0xaea
+b0 02                            # 0a99: mov    0x2,al
+e9 4a 00 00 00                   # 0a9b: jmp    0xaea
+b0 10                            # 0aa0: mov    0x10,al
+e9 43 00 00 00                   # 0aa2: jmp    0xaea
+b0 11                            # 0aa7: mov    0x11,al
+e9 3c 00 00 00                   # 0aa9: jmp    0xaea
+48 31 ff                         # 0aae: xor    rdi,rdi
+48 8d b5 80 00 02 00             # 0ab1: lea    0x20080(rbp),rsi
+ba 01 00 00 00                   # 0ab8: mov    0x1,edx
+b8 00 00 00 00                   # 0abd: mov    0x0,eax
+0f 05                            # 0ac2: syscall
+b0 12                            # 0ac4: mov    0x12,al
+e9 1f 00 00 00                   # 0ac6: jmp    0xaea
+48 31 ff                         # 0acb: xor    rdi,rdi
+48 8d b5 80 00 02 00             # 0ace: lea    0x20080(rbp),rsi
+ba 01 00 00 00                   # 0ad5: mov    0x1,edx
+b8 00 00 00 00                   # 0ada: mov    0x0,eax
+0f 05                            # 0adf: syscall
+b0 13                            # 0ae1: mov    0x13,al
+e9 02 00 00 00                   # 0ae3: jmp    0xaea
+b0 ff                            # 0ae8: mov    0xff,al
+5a                               # 0aea: pop    rdx
+5e                               # 0aeb: pop    rsi
+c3                               # 0aec: ret
+
+# ─── sigwinch_handler — SIGWINCH: reload rbp, requery size ───────────────────
+50                               # 0aed: push   rax
+48 bd f5 0e 40 00 00 00 00 00    # 0aee: movabs 0x400ef5,rbp
+48 31 ff                         # 0af8: xor    rdi,rdi
+be 13 54 00 00                   # 0afb: mov    0x5413,esi
+48 8d 95 c8 00 02 00             # 0b00: lea    0x200c8(rbp),rdx
+b8 10 00 00 00                   # 0b07: mov    0x10,eax
+0f 05                            # 0b0c: syscall
+48 0f b7 85 c8 00 02 00          # 0b0e: movzwq 0x200c8(rbp),rax
+48 89 85 f0 00 02 00             # 0b16: mov    rax,0x200f0(rbp)
+48 0f b7 85 ca 00 02 00          # 0b1d: movzwq 0x200ca(rbp),rax
+48 89 85 f8 00 02 00             # 0b25: mov    rax,0x200f8(rbp)
+58                               # 0b2c: pop    rax
+c3                               # 0b2d: ret
+
+# ─── restorer — rt_sigreturn trampoline ──────────────────────────────────────
+b8 0f 00 00 00                   # 0b2e: mov    0xf,eax
+0f 05                            # 0b33: syscall
+
+# ─── usage_error — print usage, exit(1) ──────────────────────────────────────
+48 8d 35 6f 03 00 00             # 0b35: lea    0x36f(rip),rsi        # 0xeab
+ba 1b 00 00 00                   # 0b3c: mov    0x1b,edx
+e8 d4 f8 ff ff                   # 0b41: call   0x41a
+bf 01 00 00 00                   # 0b46: mov    0x1,edi
+b8 3c 00 00 00                   # 0b4b: mov    0x3c,eax
+0f 05                            # 0b50: syscall
+
+# ─── open_error — print error, exit(1) ───────────────────────────────────────
+48 8d 35 6d 03 00 00             # 0b52: lea    0x36d(rip),rsi        # 0xec6
+ba 13 00 00 00                   # 0b59: mov    0x13,edx
+e8 b7 f8 ff ff                   # 0b5e: call   0x41a
+bf 01 00 00 00                   # 0b63: mov    0x1,edi
+b8 3c 00 00 00                   # 0b68: mov    0x3c,eax
+0f 05                            # 0b6d: syscall
+
+# ─── empty_error — print error, exit(1) ──────────────────────────────────────
+48 8d 35 63 03 00 00             # 0b6f: lea    0x363(rip),rsi        # 0xed9
+ba 10 00 00 00                   # 0b76: mov    0x10,edx
+e8 9a f8 ff ff                   # 0b7b: call   0x41a
+bf 01 00 00 00                   # 0b80: mov    0x1,edi
+b8 3c 00 00 00                   # 0b85: mov    0x3c,eax
+0f 05                            # 0b8a: syscall
+
+# ─── mmap_error — print error, exit(1) ───────────────────────────────────────
+48 8d 35 56 03 00 00             # 0b8c: lea    0x356(rip),rsi        # 0xee9
+ba 0c 00 00 00                   # 0b93: mov    0xc,edx
+e8 7d f8 ff ff                   # 0b98: call   0x41a
+bf 01 00 00 00                   # 0b9d: mov    0x1,edi
+b8 3c 00 00 00                   # 0ba2: mov    0x3c,eax
+0f 05                            # 0ba7: syscall
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DATA — strings, escape codes, lookup table
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# hex_digits: "0123456789ABCDEF"
+30 31 32 33 34 35 36 37 38 39 41 42 43 44 45 46  # |0123456789ABCDEF|
+
+# str_alt_on
+1b 5b 3f 31 30 34 39 68 1b 5b 3f 32 35 6c 1b 5b  # |.[?1049h.[?25l.[|
+32 4a 1b 5b 48 00 1b 5b 3f 32 35 68 1b 5b 3f 31  # |2J.[H..[?25h.[?1|
+30 34 39 6c 1b 5b 32 4a 1b 5b 48 1b 5b 3f 32 35  # |049l.[2J.[H.[?25|
+6c 1b 5b 4b 1b 5b 33 38 3b 35 3b 32 34 39 6d 1b  # |l.[K.[38;5;249m.|
+5b 31 3b 33 37 6d 1b 5b 30 6d 1b 5b 33 38 3b 35  # |[1;37m.[0m.[38;5|
+3b 31 37 38 6d 1b 5b 33 38 3b 35 3b 31 31 34 6d  # |;178m.[38;5;114m|
+
+# col_dimgray
+1b 5b 33 38 3b 35 3b 32 34 30 6d 1b 5b 33 38 3b  # |.[38;5;240m.[38;|
+35 3b 36 37 6d 1b 5b 33 38 3b 35 3b 31 37 39 6d  # |5;67m.[38;5;179m|
+
+# box drawing strings
+e2 94 8c e2 94 80 e2 94 80 e2 94 80 20 00 6d 61  # |............ .ma|
+63 68 69 6e 65 2d 64 75 6d 70 00 20 e2 94 80 e2  # |chine-dump. ....|
+94 80 e2 94 80 20 00 20 e2 94 80 e2 94 80 20 00  # |..... . ...... .|
+20 62 79 74 65 73 20 00 e2 94 80 e2 94 80 e2 94  # | bytes .........|
+80 e2 94 90 00 e2 94 82 20 20 00 20 20 e2 94 82  # |........  .  ...|
+00 e2 94 82 20 20 20 20 20 20 20 20 20 20 20 20  # |....            |
+20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20  # |                |
+20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20  # |                |
+20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20  # |                |
+20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20  # |                |
+20 20 e2 94 82 00 e2 94 82 20 20 4f 66 66 73 65  # |  .......  Offse|
+74 20 20 20 30 30 20 30 31 20 30 32 20 30 33 20  # |t   00 01 02 03 |
+30 34 20 30 35 20 30 36 20 30 37 20 20 30 38 20  # |04 05 06 07  08 |
+30 39 20 30 41 20 30 42 20 30 43 20 30 44 20 30  # |09 0A 0B 0C 0D 0|
+45 20 30 46 20 20 20 41 53 43 49 49 20 20 20 20  # |E 0F   ASCII    |
+20 20 20 20 20 20 e2 94 82 00 e2 94 82 20 20 e2  # |      .......  .|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 20 20 e2 94 80 e2 94 80 e2  # |.......  .......|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80  # |................|
+e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2  # |................|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80  # |................|
+e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2  # |................|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80  # |................|
+e2 94 80 e2 94 80 e2 94 80 20 20 20 e2 94 80 e2  # |.........   ....|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80  # |................|
+e2 94 80 e2 94 80 20 20 e2 94 82 00 e2 94 94 e2  # |......  ........|
+94 80 e2 94 80 e2 94 80 20 1b 5b 33 38 3b 35 3b  # |........ .[38;5;|
+32 34 35 6d 55 70 2f 44 6e 20 73 63 72 6f 6c 6c  # |245mUp/Dn scroll|
+20 20 50 67 55 70 2f 50 67 44 6e 20 70 61 67 65  # |  PgUp/PgDn page|
+20 20 67 20 67 6f 74 6f 20 20 71 20 71 75 69 74  # |  g goto  q quit|
+1b 5b 33 38 3b 35 3b 32 34 39 6d 20 e2 94 80 e2  # |.[38;5;249m ....|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80  # |................|
+e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2  # |................|
+94 80 e2 94 80 e2 94 80 e2 94 80 e2 94 80 e2 94  # |................|
+98 00 55 73 61 67 65 3a 20 6d 61 63 68 69 6e 65  # |..Usage: machine|
+2d 64 75 6d 70 20 3c 66 69 6c 65 3e 0a 43 61 6e  # |-dump <file>.Can|
+6e 6f 74 20 6f 70 65 6e 20 66 69 6c 65 2e 0a 00  # |not open file...|
+46 69 6c 65 20 69 73 20 65 6d 70 74 79 2e 0a 00  # |File is empty...|
+6d 6d 61 70 20 66 61 69 6c 65 64 0a              # |mmap failed.|
